@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion to Markdown Converter</title>
+    <script src="dist/bundle.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #notionForm {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            height: 250px;
+            overflow: auto;
+            margin-top: 20px;
+            padding: 0 20px 20px 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #lastEdited {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+            text-align: right;
+        }
+        #resultActions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        #resultActions button {
+            flex: 1;
+            padding: 10px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #resultActions button:hover {
+            background-color: #007B9A;
+        }
+    </style>
+</head>
+<body>
+    <h1>Notion to Markdown Converter</h1>
+    <form id="notionForm">
+        <input type="text" id="notionSecret" placeholder="Notion Secret">
+        <input type="text" id="pageId" placeholder="Page ID">
+        <button type="submit">Convert</button>
+    </form>
+    <div id="resultActions" style="display: none;">
+      <button id="copyButton">Copy to Clipboard</button>
+      <button id="downloadButton">Download Markdown</button>
+    </div>
+    <div id="lastEdited"></div>
+    <pre id="result" style="display: none;"></pre>
+
+    <script>
+        function formatDate(dateString) {
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            };
+            return new Date(dateString).toLocaleString(undefined, options);
+        }
+
+        async function convertNotionPage(notionSecret, pageId) {
+            const resultElement = document.getElementById('result');
+            const resultActionsElement = document.getElementById('resultActions');
+
+            if (!notionSecret || !pageId) {
+                resultElement.textContent = 'Error: Missing notion_secret or page_id';
+                resultElement.style.display = 'block';
+                resultActionsElement.style.display = 'none';
+                return;
+            }
+            try {
+                const result = await window.getNotionPageMarkdown(notionSecret, pageId);
+                
+                if (result.error) {
+                    resultElement.textContent = result.error;
+                    resultElement.style.display = 'block';
+                    resultActionsElement.style.display = 'none';
+                    return;
+                }
+                
+                const { lastEditedTime, markdown } = result;
+                
+                if (result.lastEditedTime) {
+                    const formattedDate = formatDate(result.lastEditedTime);
+                    document.getElementById('lastEdited').textContent = `Last edited: ${formattedDate}`;
+                } else {
+                    document.getElementById('lastEdited').textContent = '';
+                }
+                
+                // Display the markdown content
+                resultElement.textContent = markdown;
+                
+                // Show the result and result actions if there's content
+                if (markdown) {
+                    resultElement.style.display = 'block';
+                    resultActionsElement.style.display = 'flex';
+                } else {
+                    resultElement.style.display = 'none';
+                    resultActionsElement.style.display = 'none';
+                }
+            } catch (error) {
+                resultElement.textContent = `Error: ${error.message}`;
+                resultElement.style.display = 'block';
+                resultActionsElement.style.display = 'none';
+            }
+        }
+
+        function loadFromUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const notionSecret = urlParams.get('notion_secret');
+            const pageId = urlParams.get('page_id');
+            
+            if (notionSecret) document.getElementById('notionSecret').value = notionSecret;
+            if (pageId) document.getElementById('pageId').value = pageId;
+        }
+
+        document.getElementById('notionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const notionSecret = document.getElementById('notionSecret').value;
+            const pageId = document.getElementById('pageId').value;
+            convertNotionPage(notionSecret, pageId);
+        });
+
+        // Copy to clipboard functionality
+        document.getElementById('copyButton').addEventListener('click', () => {
+            const resultText = document.getElementById('result').textContent;
+            navigator.clipboard.writeText(resultText).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        });
+
+        // Download functionality
+        document.getElementById('downloadButton').addEventListener('click', () => {
+            const resultText = document.getElementById('result').textContent;
+            const blob = new Blob([resultText], {type: 'text/markdown'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'notion_page.md';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Load from URL params when the page loads
+        window.addEventListener('load', loadFromUrlParams);
+    </script>
+</body>
+</html>
