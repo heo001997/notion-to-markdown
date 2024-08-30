@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notion to Markdown Converter</title>
     <script src="dist/bundle.js"></script>
+    <script src="src/hugo-relearn-parser.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -79,21 +80,72 @@
         #resultActions button:hover {
             background-color: #007B9A;
         }
+        .sync-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .sync-table th, .sync-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            vertical-align: top;
+        }
+
+        .sync-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .sync-table tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .sync-checkbox {
+            width: 18px;
+            height: 18px;
+        }
+
+        .content-textarea {
+            width: 100%;
+            height: 100px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            padding: 5px;
+        }
+
+        #parseTable {
+            margin-top: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
     <h1>Notion to Markdown Converter</h1>
     <form id="notionForm">
-        <input type="text" id="notionSecret" placeholder="Notion Secret">
-        <input type="text" id="pageId" placeholder="Page ID">
+        <input type="text" id="notionSecret" placeholder="Enter Notion Secret" required>
+        <input type="text" id="pageId" placeholder="Enter Page ID" required>
+        <label for="testMode">
+            <input type="checkbox" id="testMode" checked> Test Mode
+        </label>
         <button type="submit">Convert</button>
     </form>
     <div id="resultActions" style="display: none;">
-      <button id="copyButton">Copy to Clipboard</button>
-      <button id="downloadButton">Download Markdown</button>
+        <button id="copyButton">Copy to Clipboard</button>
+        <button id="downloadButton">Download Markdown</button>
     </div>
     <div id="lastEdited"></div>
     <pre id="result" style="display: none;"></pre>
+    <button id="parseButton" style="display: none;">Parse</button>
+    <div id="parseTable" style="display: none;"></div>
 
     <script>
         function formatDate(dateString) {
@@ -110,27 +162,42 @@
         async function convertNotionPage(notionSecret, pageId) {
             const resultElement = document.getElementById('result');
             const resultActionsElement = document.getElementById('resultActions');
+            const parseButtonElement = document.getElementById('parseButton');
+            const testMode = document.getElementById('testMode').checked;
 
             if (!notionSecret || !pageId) {
                 resultElement.textContent = 'Error: Missing notion_secret or page_id';
                 resultElement.style.display = 'block';
                 resultActionsElement.style.display = 'none';
+                parseButtonElement.style.display = 'none';
                 return;
             }
             try {
-                const result = await window.getNotionPageMarkdown(notionSecret, pageId);
-                
-                if (result.error) {
-                    resultElement.textContent = result.error;
-                    resultElement.style.display = 'block';
-                    resultActionsElement.style.display = 'none';
-                    return;
+                let result;
+                const storedData = localStorage.getItem('notionMarkdown');
+
+                if (testMode && storedData) {
+                    console.log("Test mode: Using stored data.");
+                    result = JSON.parse(storedData);
+                } else {
+                    result = await window.getNotionPageMarkdown(notionSecret, pageId);
+                    
+                    if (result.error) {
+                        resultElement.textContent = result.error;
+                        resultElement.style.display = 'block';
+                        resultActionsElement.style.display = 'none';
+                        parseButtonElement.style.display = 'none';
+                        return;
+                    }
+                    
+                    // Store in localStorage
+                    localStorage.setItem('notionMarkdown', JSON.stringify(result));
                 }
                 
                 const { lastEditedTime, markdown } = result;
                 
-                if (result.lastEditedTime) {
-                    const formattedDate = formatDate(result.lastEditedTime);
+                if (lastEditedTime) {
+                    const formattedDate = formatDate(lastEditedTime);
                     document.getElementById('lastEdited').textContent = `Last edited: ${formattedDate}`;
                 } else {
                     document.getElementById('lastEdited').textContent = '';
@@ -139,18 +206,21 @@
                 // Display the markdown content
                 resultElement.textContent = markdown;
                 
-                // Show the result and result actions if there's content
+                // Show the result, result actions, and parse button if there's content
                 if (markdown) {
                     resultElement.style.display = 'block';
                     resultActionsElement.style.display = 'flex';
+                    parseButtonElement.style.display = 'block';
                 } else {
                     resultElement.style.display = 'none';
                     resultActionsElement.style.display = 'none';
+                    parseButtonElement.style.display = 'none';
                 }
             } catch (error) {
                 resultElement.textContent = `Error: ${error.message}`;
                 resultElement.style.display = 'block';
                 resultActionsElement.style.display = 'none';
+                parseButtonElement.style.display = 'none';
             }
         }
 
@@ -167,7 +237,8 @@
             e.preventDefault();
             const notionSecret = document.getElementById('notionSecret').value;
             const pageId = document.getElementById('pageId').value;
-            convertNotionPage(notionSecret, pageId);
+            const testMode = document.getElementById('testMode').checked;
+            convertNotionPage(notionSecret, pageId, testMode);
         });
 
         // Copy to clipboard functionality
@@ -193,6 +264,46 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         });
+
+        // Parse button functionality
+        document.getElementById('parseButton').addEventListener('click', () => {
+            const markdownContent = document.getElementById('result').textContent;
+            const parseTableElement = document.getElementById('parseTable');
+            const parsedContent = parseMarkdown(markdownContent);
+            console.log('Parsed Content:', parsedContent);
+            const tableHtml = generateTableHtml(parsedContent);
+            parseTableElement.innerHTML = '<h2>Chapter Structure</h2>' + tableHtml;
+            parseTableElement.style.display = 'block';
+        });
+
+        function generateTableHtml(parsedContent) {
+            let tableHtml = '<table class="sync-table">';
+            tableHtml += '<thead><tr><th>ID</th><th>Level</th><th>Title</th><th>Content Preview</th><th>Content</th><th>Synced</th></tr></thead>';
+            tableHtml += '<tbody>';
+
+            let id = 1;
+            parsedContent.forEach(section => {
+                if (section.type.startsWith('h') && parseInt(section.type[1]) <= 5) {
+                    const level = section.type[1];
+                    const title = section.title;
+                    const contentPreview = section.content.join(' ').substring(0, 100) + '...';
+                    const fullContent = section.content.join('\n');
+                    
+                    tableHtml += `<tr>
+                        <td>${id}</td>
+                        <td>H${level}</td>
+                        <td>${title}</td>
+                        <td>${contentPreview}</td>
+                        <td><textarea class="content-textarea" readonly>${fullContent}</textarea></td>
+                        <td><input type="checkbox" class="sync-checkbox" id="sync-${id}"></td>
+                    </tr>`;
+                    id++;
+                }
+            });
+
+            tableHtml += '</tbody></table>';
+            return tableHtml;
+        }
 
         // Load from URL params when the page loads
         window.addEventListener('load', loadFromUrlParams);
