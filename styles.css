@@ -1,0 +1,244 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f0f0f0;
+}
+
+.container {
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 20px;
+  box-sizing: border-box;
+  min-height: 100vh; /* Ensure the container takes at least the full viewport height */
+  display: flex;
+  flex-direction: column;
+}
+
+h1 {
+  color: #333;
+  text-align: center;
+}
+
+#notionForm {
+  width: 100%;
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  box-sizing: border-box; /* Add this line */
+}
+
+#notionForm input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+#notionForm button {
+  width: 100%;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-top: 10px;
+}
+
+#notionForm button:hover {
+  background-color: #45a049;
+}
+
+#contentWrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#resultActions {
+  display: none; /* Hidden by default */
+  width: 100%;
+  margin: 20px 0;
+  justify-content: center; /* Center the buttons horizontally */
+  gap: 10px; /* Space between buttons */
+}
+
+#resultActions button {
+  width: calc(50% - 5px); /* 50% width minus half of the gap */
+  padding: 10px 20px;
+  background-color: #008CBA;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+#resultActions button:first-child {
+  margin-right: 10px; /* Creates a gap between buttons */
+}
+
+#resultActions button:hover {
+  background-color: #007B9A;
+}
+
+#lastEdited {
+  width: 100%;
+  text-align: right;
+  margin-bottom: 10px;
+  font-style: italic;
+  color: #666;
+}
+
+#result {
+  width: 100%;
+  height: 250px;
+  overflow: auto;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: 20px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  display: none;
+  box-sizing: border-box;
+}
+
+#parseButtonContainer {
+  width: 100%;
+  margin-top: 20px;
+}
+
+#parseButton {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#parseButton:hover {
+  background-color: #45a049;
+}
+
+#parseTable {
+  width: 100%;
+  margin-top: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: 20px;
+  overflow-x: auto;
+  display: none;
+  box-sizing: border-box;
+}
+
+.sync-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.sync-table th, .sync-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  vertical-align: top;
+}
+
+.sync-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sync-table tr:hover {
+  background-color: #f5f5f5;
+}
+
+.sync-checkbox {
+  width: 18px;
+  height: 18px;
+}
+
+.content-textarea {
+  width: 100%;
+  height: 100px;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 12px;
+  border: 1px solid #ddd;
+  padding: 5px;
+  box-sizing: border-box;
+}
+
+.sync-table td:nth-child(1),
+.sync-table td:nth-child(2),
+.sync-table td:nth-child(6) {
+  width: 5%;
+}
+
+.sync-table td:nth-child(3),
+.sync-table td:nth-child(4) {
+  width: 20%;
+}
+
+.sync-table td:nth-child(5) {
+  width: 45%;
+}
+
+#parseButton {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 20px auto 0;
+}
+
+#parseButton:hover {
+  background-color: #45a049;
+}
+
+/* Style for the Convert button and other form buttons */
+#notionForm button {
+  width: 100%;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-top: 10px;
+}
+
+#notionForm button:hover {
+  background-color: #45a049;
+}
+
+/* Style for the Parse button container */
+#parseButtonContainer {
+  max-width: 95vw;
+  margin: 20px auto 0;
+}
