@@ -300,6 +300,54 @@ function updateSyncStatus(id, success) {
   }
 }
 
+async function processAndUploadImages(id, content, basePath) {
+    const imgRegex = /!\[.*?\]\((.*?)\)/g;
+    let match;
+    let newContent = content;
+    const uploadedImages = [];
+
+    while ((match = imgRegex.exec(content)) !== null) {
+        const oldImageUrl = match[1];
+        const imageName = oldImageUrl.split('/').pop().split('?')[0];
+        const imageBasePath = basePath.replace(/^content\//, '');
+        const randomDigits = Math.floor(100000 + Math.random() * 900000);
+        const newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
+        const newImagePathInContent = newImagePath.replace(/^static/, '');
+        console.log('Processing image:', oldImageUrl);
+
+        try {
+            const response = await fetch(oldImageUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const blob = await response.blob();
+            console.log('Image downloaded, size:', blob.size, 'bytes');
+
+            const base64data = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = (error) => {
+                    console.error('Error reading file:', error);
+                    resolve(null);
+                };
+                reader.readAsDataURL(blob);
+            });
+
+            if (base64data) {
+                uploadedImages.push({ path: newImagePath, content: base64data });
+                newContent = newContent.replace(oldImageUrl, newImagePathInContent);
+                console.log('Image processed successfully:', newImagePath);
+            } else {
+                console.error('Failed to convert image to base64:', oldImageUrl);
+            }
+        } catch (error) {
+            console.error(`Error processing image ${oldImageUrl}:`, error);
+        }
+    }
+
+    return { newContent, uploadedImages };
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
     loadFromUrlParams();
 
@@ -381,19 +429,36 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
         try {
             await github.deleteFolder('content');
-            console.log('Existing content folder deleted or not found');
+            await github.deleteFolder('static/images');
+            console.log('Existing content and images folders deleted or not found');
 
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
             const restructuredChapterStructure = restructureChapterStructure(chapterStructure);
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
+            console.log('Folder structure:', folderStructure);
 
             for (const item of folderStructure) {
                 try {
-                    await github.createFile(item.path, item.content);
+                    const basePath = item.path.split('/').slice(0, -1).join('/');
+                    const { newContent, uploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
+                    
+                    // Upload the content file with updated image paths
+                    await github.createFile(item.path, newContent);
                     console.log(`Created: ${item.path}`);
                     updateSyncStatus(item.id, true);
+
+                    // Upload the images
+                    for (const image of uploadedImages) {
+                        try {
+                            console.log(`Uploading image: ${image.path}, size: ${image.content.length} characters`);
+                            await github.createFile(image.path, image.content, true);
+                            console.log(`Uploaded image: ${image.path}`);
+                        } catch (error) {
+                            console.error(`Error uploading image ${image.path}:`, error);
+                        }
+                    }
                 } catch (error) {
-                    console.error(`Error creating file ${item.path}:`, error);
+                    console.error(`Error processing item ${item.path}:`, error);
                     updateSyncStatus(item.id, false);
                 }
             }

@@ -24,14 +24,16 @@ class GitHubWrapper {
     }
   }
 
-  async createFile(path, content) {
+  async createFile(path, content, isBinary = false) {
+    const body = {
+      message: `Create ${path}`,
+      content: isBinary ? content : btoa(unescape(encodeURIComponent(content)))
+    };
+
     const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/contents/${path}`, {
       method: 'PUT',
       headers: this.headers,
-      body: JSON.stringify({
-        message: `Create ${path}`,
-        content: btoa(unescape(encodeURIComponent(content)))
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
