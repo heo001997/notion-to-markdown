@@ -22,17 +22,25 @@
                 <button id="copyButton">Copy to Clipboard</button>
                 <button id="downloadButton">Download Markdown</button>
             </div>
+            <h2 id="resultTitle"></h2>
             <div id="lastEdited"></div>
             <pre id="result"></pre>
         </div>
         <div id="parseButtonContainer">
             <button id="parseButton">Parse into Hugo Relearn</button>
         </div>
+        <div id="githubSyncForm" style="display: none;">
+            <h2>Sync to GitHub</h2>
+            <input type="text" id="githubToken" placeholder="Enter GitHub Personal Access Token" required>
+            <input type="text" id="githubRepo" placeholder="Enter GitHub Repo URL" required>
+            <button id="syncButton">Sync to GitHub</button>
+        </div>
         <div id="parseTable"></div>
     </div>
 
     <script src="dist/bundle.js"></script>
     <script src="src/hugo-relearn-parser.js"></script>
+    <script src="src/github-wrapper.js"></script>
     <script src="src/main.js"></script>
 </body>
 </html>

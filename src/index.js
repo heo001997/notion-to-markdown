@@ -43,6 +43,17 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
     throw error;
   }
   const lastEditedTime = pageResponse.last_edited_time;
+  
+  // Extract title safely
+  let title = 'Untitled';
+  if (pageResponse.properties && pageResponse.properties.title) {
+    if (Array.isArray(pageResponse.properties.title.title) && pageResponse.properties.title.title.length > 0) {
+      title = pageResponse.properties.title.title[0].plain_text;
+    } else if (typeof pageResponse.properties.title.title === 'string') {
+      title = pageResponse.properties.title.title;
+    }
+  }
+  console.log("Extracted title: ", title);
 
   // Check localStorage for existing data
   const storedData = localStorage.getItem('notionMarkdown');
@@ -50,7 +61,7 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
     const parsedData = JSON.parse(storedData);
     if (parsedData.lastEditedTime === lastEditedTime) {
       console.log("No changes detected. Using stored data.");
-      return parsedData;
+      return { ...parsedData, title };
     }
   }
 
@@ -65,6 +76,7 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
     
     const result = {
       lastEditedTime: lastEditedTime,
+      title: title,
       markdown: mdString.parent
     };
     // Store in localStorage
