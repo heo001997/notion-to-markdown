@@ -157,8 +157,7 @@ h1 {
 .sync-table th, .sync-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #ddd;
-  vertical-align: top;
+  vertical-align: middle; /* Change this from 'top' to 'middle' */
 }
 
 .sync-table th {
@@ -189,8 +188,7 @@ h1 {
 }
 
 .sync-table td:nth-child(1),
-.sync-table td:nth-child(2),
-.sync-table td:nth-child(6) {
+.sync-table td:nth-child(2) {
   width: 5%;
 }
 
@@ -202,6 +200,10 @@ h1 {
 .sync-table td:nth-child(5) {
   width: 45%;
 }
+
+/* .sync-table td:nth-child(6) {
+  width: 5%;
+} */
 
 #parseButton {
   display: block;
@@ -290,4 +292,15 @@ h1 {
     font-size: 24px;
     font-weight: bold;
     color: #333;
+}
+
+.sync-status {
+  font-size: 20px;
+  color: #888;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 100px; /* Add this line */
 }

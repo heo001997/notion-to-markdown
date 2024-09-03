@@ -130,27 +130,27 @@ function loadFromUrlParams() {
 
 function generateTableHtml(parsedContent) {
   let tableHtml = '<table class="sync-table">';
-  tableHtml += '<thead><tr><th>ID</th><th>Level</th><th>Title</th><th>Content Preview</th><th>Content</th><th>Synced</th></tr></thead>';
+  tableHtml += '<thead><tr><th>ID</th><th>Level</th><th>Title</th><th>Content Preview</th><th>Content</th><th>Sync</th></tr></thead>';
   tableHtml += '<tbody>';
 
   let id = 1;
   parsedContent.forEach(section => {
-      if (section.type.startsWith('h') && parseInt(section.type[1]) <= 5) {
-          const level = section.type[1];
-          const title = section.title;
-          const contentPreview = section.content.join(' ').substring(0, 100) + '...';
-          const fullContent = section.content.join('\n');
-          
-          tableHtml += `<tr>
-              <td>${id}</td>
-              <td>H${level}</td>
-              <td>${title}</td>
-              <td>${contentPreview}</td>
-              <td><textarea class="content-textarea" readonly>${fullContent}</textarea></td>
-              <td><input type="checkbox" class="sync-checkbox" id="sync-${id}"></td>
-          </tr>`;
-          id++;
-      }
+    if (section.type.startsWith('h') && parseInt(section.type[1]) <= 5) {
+      const level = section.type[1];
+      const title = section.title;
+      const contentPreview = section.content.join(' ').substring(0, 100) + '...';
+      const fullContent = section.content.join('\n');
+      
+      tableHtml += `<tr data-id="${id}">
+          <td>${id}</td>
+          <td>H${level}</td>
+          <td>${title}</td>
+          <td>${contentPreview}</td>
+          <td><textarea class="content-textarea" readonly>${fullContent}</textarea></td>
+          <td class="sync-status">&#x25CF;</td>
+      </tr>`;
+      id++;
+    }
   });
 
   tableHtml += '</tbody></table>';
@@ -164,6 +164,7 @@ function restructureChapterStructure(rows) {
   rows.forEach(row => {
     const level = parseInt(row.cells[1].textContent.slice(1));
     const current = {
+      id: row.cells[0].textContent,
       level: row.cells[1].textContent,
       title: row.cells[2].textContent,
       content: row.cells[4].querySelector('textarea').value,
@@ -236,6 +237,7 @@ Discover what this workshop is all about and the core-concepts behind it.
     if (level === 1) {
       // Always create a folder with _index.md for level 1
       structure.push({
+        id: item.id,
         path: `${path}/_index.md`,
         content: `+++
 archetype = "chapter"
@@ -254,6 +256,7 @@ ${item.content}
       subIndex[hierarchy] = 1;
       currentFolder = hierarchy
       structure.push({
+        id: item.id,
         path: `${path}/_index.md`,
         content: `+++
 title = "${item.title}"
@@ -269,6 +272,7 @@ ${item.content}
       const weight = subIndex[currentFolder];
       subIndex[currentFolder]++;
       structure.push({
+        id: item.id,
         path: `${path}.md`,
         content: `+++
 title = "${item.title}"
@@ -284,6 +288,16 @@ ${item.content}
   chapterStructure.forEach(item => processItem(item));
 
   return structure;
+}
+
+function updateSyncStatus(id, success) {
+  console.log('Updating sync status for:', id);
+  const row = document.querySelector(`#chapterStructureContainer tr[data-id="${id}"]`);
+  if (row) {
+    const statusCell = row.querySelector('.sync-status');
+    statusCell.innerHTML = success ? '&#x2705;' : '&#x274C;'; // Green tick or red cross
+    statusCell.style.fontSize = '20px';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
@@ -374,11 +388,19 @@ document.addEventListener('DOMContentLoaded', (event) => {
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
 
             for (const item of folderStructure) {
-                await github.createFile(item.path, item.content);
-                console.log(`Created: ${item.path}`);
+                try {
+                    await github.createFile(item.path, item.content);
+                    console.log(`Created: ${item.path}`);
+                    updateSyncStatus(item.id, true);
+                } catch (error) {
+                    console.error(`Error creating file ${item.path}:`, error);
+                    updateSyncStatus(item.id, false);
+                }
             }
 
-            alert('GitHub sync completed successfully');
+            setTimeout(() => {
+                alert('GitHub sync completed');
+            }, 1000);
         } catch (error) {
             console.error('Error during GitHub sync:', error);
             alert('Error during GitHub sync. Check console for details.');
