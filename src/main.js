@@ -24,6 +24,7 @@ function toggleParseAndSyncVisibility(show) {
 }
 
 async function convertNotionPage(notionSecret, pageId) {
+  const convertButton = document.getElementById('convertButton');
   const resultElement = document.getElementById('result');
   const resultActionsElement = document.getElementById('resultActions');
   const parseButtonElement = document.getElementById('parseButton');
@@ -33,82 +34,98 @@ async function convertNotionPage(notionSecret, pageId) {
   const corsProxyUrl = document.getElementById('corsProxyUrl').value;
   const corsProxyToken = document.getElementById('corsProxyToken').value;
 
-  if (!notionSecret || !pageId) {
-      resultElement.textContent = 'Error: Missing notion_secret or page_id';
-      resultElement.style.display = 'block';
-      resultActionsElement.style.display = 'none';
-      parseButtonElement.style.display = 'none';
-      return;
-  }
-  try {
-      let result;
-      const storedData = localStorage.getItem('notionMarkdown');
+  // Update button text and disable it
+  convertButton.textContent = 'Converting...';
+  convertButton.disabled = true;
 
-      if (testMode && storedData) {
-          console.log("Test mode: Using stored data.");
-          result = JSON.parse(storedData);
-      } else {
-          result = await window.getNotionPageMarkdown(notionSecret, pageId, corsProxyUrl, corsProxyToken);
-          
-          if (result.error) {
-              resultElement.textContent = result.error;
-              resultElement.style.display = 'block';
-              resultActionsElement.style.display = 'none';
-              parseButtonElement.style.display = 'none';
-              return;
-          }
-          
-          localStorage.setItem('notionMarkdown', JSON.stringify(result));
-      }
-      
-      const { lastEditedTime, markdown, title } = result;
-      
-      if (lastEditedTime) {
-          const formattedDate = formatDate(lastEditedTime);
-          document.getElementById('lastEdited').textContent = `Last edited: ${formattedDate}`;
-      } else {
-          document.getElementById('lastEdited').textContent = '';
-      }
-      
-      console.log("Title from Notion:", title); // Add this line for debugging
-      resultTitleElement.textContent = title || 'Untitled';
-      resultElement.textContent = markdown;
-      
-      if (markdown && markdown.trim() !== '') {
-          resultElement.style.display = 'block';
-          resultTitleElement.style.display = 'block';
-          resultActionsElement.style.display = 'flex';
-          toggleParseAndSyncVisibility(true);
-          
-          let parseButtonContainer = document.getElementById('parseButtonContainer');
-          if (!parseButtonContainer) {
-              parseButtonContainer = document.createElement('div');
-              parseButtonContainer.id = 'parseButtonContainer';
-              parseButtonElement.parentNode.insertBefore(parseButtonContainer, parseButtonElement);
-          }
-          
-          parseButtonContainer.appendChild(parseButtonElement);
-      } else {
-          resultElement.style.display = 'none';
-          resultTitleElement.style.display = 'none';
-          resultActionsElement.style.display = 'none';
-          toggleParseAndSyncVisibility(false);
-          if (parseTableElement) parseTableElement.style.display = 'none';
-      }
+  // Show loading state
+  resultElement.textContent = 'Loading...';
+  resultElement.style.display = 'block';
+  resultTitleElement.style.display = 'none';
+  resultActionsElement.style.display = 'none';
+  toggleParseAndSyncVisibility(false);
+  if (parseTableElement) parseTableElement.style.display = 'none';
+
+  if (!notionSecret || !pageId) {
+    resultElement.textContent = 'Error: Missing notion_secret or page_id';
+    convertButton.textContent = 'Convert';
+    convertButton.disabled = false;
+    return;
+  }
+
+  try {
+    let result;
+    const storedData = localStorage.getItem('notionMarkdown');
+
+    if (testMode && storedData) {
+        console.log("Test mode: Using stored data.");
+        result = JSON.parse(storedData);
+    } else {
+        result = await window.getNotionPageMarkdown(notionSecret, pageId, corsProxyUrl, corsProxyToken);
+        
+        if (result.error) {
+            resultElement.textContent = result.error;
+            resultElement.style.display = 'block';
+            resultActionsElement.style.display = 'none';
+            parseButtonElement.style.display = 'none';
+            return;
+        }
+        
+        localStorage.setItem('notionMarkdown', JSON.stringify(result));
+    }
+    
+    const { lastEditedTime, markdown, title } = result;
+    
+    if (lastEditedTime) {
+        const formattedDate = formatDate(lastEditedTime);
+        document.getElementById('lastEdited').textContent = `Last edited: ${formattedDate}`;
+    } else {
+        document.getElementById('lastEdited').textContent = '';
+    }
+    
+    console.log("Title from Notion:", title); // Add this line for debugging
+    resultTitleElement.textContent = title || 'Untitled';
+    resultElement.textContent = markdown;
+    
+    if (markdown && markdown.trim() !== '') {
+        resultElement.style.display = 'block';
+        resultTitleElement.style.display = 'block';
+        resultActionsElement.style.display = 'flex';
+        toggleParseAndSyncVisibility(true);
+        
+        let parseButtonContainer = document.getElementById('parseButtonContainer');
+        if (!parseButtonContainer) {
+            parseButtonContainer = document.createElement('div');
+            parseButtonContainer.id = 'parseButtonContainer';
+            parseButtonElement.parentNode.insertBefore(parseButtonContainer, parseButtonElement);
+        }
+        
+        parseButtonContainer.appendChild(parseButtonElement);
+    } else {
+        resultElement.style.display = 'none';
+        resultTitleElement.style.display = 'none';
+        resultActionsElement.style.display = 'none';
+        toggleParseAndSyncVisibility(false);
+        if (parseTableElement) parseTableElement.style.display = 'none';
+    }
   } catch (error) {
-      console.error("Error in convertNotionPage:", error);
-      let errorMessage = "An error occurred while converting the Notion page.";
-      if (error.message.includes("API token is invalid")) {
-          errorMessage = "The Notion API token is invalid. Please check your token and try again.";
-      } else if (error.status === 404) {
-          errorMessage = "The specified Notion page could not be found. Please check the page ID and ensure the page is shared with your integration.";
-      }
-      resultElement.textContent = errorMessage;
-      resultElement.style.display = 'block';
-      resultTitleElement.style.display = 'none';
-      resultActionsElement.style.display = 'none';
-      toggleParseAndSyncVisibility(false);
-      if (parseTableElement) parseTableElement.style.display = 'none';
+    console.error("Error in convertNotionPage:", error);
+    let errorMessage = "An error occurred while converting the Notion page.";
+    if (error.message.includes("API token is invalid")) {
+        errorMessage = "The Notion API token is invalid. Please check your token and try again.";
+    } else if (error.status === 404) {
+        errorMessage = "The specified Notion page could not be found. Please check the page ID and ensure the page is shared with your integration.";
+    }
+    resultElement.textContent = errorMessage;
+    resultElement.style.display = 'block';
+    resultTitleElement.style.display = 'none';
+    resultActionsElement.style.display = 'none';
+    toggleParseAndSyncVisibility(false);
+    if (parseTableElement) parseTableElement.style.display = 'none';
+  } finally {
+    // Always reset the button text and enable it
+    convertButton.textContent = 'Convert';
+    convertButton.disabled = false;
   }
 }
 
@@ -444,15 +461,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     document.getElementById('notionForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        console.log('Form submitted');
         const notionSecret = document.getElementById('notionSecret').value;
         const pageId = document.getElementById('pageId').value;
-        const testMode = document.getElementById('testMode')?.checked;
-        
-        // Hide Parse button, parse table, and GitHub sync form before starting conversion
-        toggleParseAndSyncVisibility(false);
-        if (parseTableElement) parseTableElement.style.display = 'none';
-        
-        await convertNotionPage(notionSecret, pageId, testMode);
+        console.log('Calling convertNotionPage');
+        await convertNotionPage(notionSecret, pageId);
+        console.log('convertNotionPage completed');
     });
 
     document.getElementById('copyButton').addEventListener('click', () => {
