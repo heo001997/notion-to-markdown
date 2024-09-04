@@ -52,6 +52,13 @@ class GitHubWrapper {
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`File ${path} already deleted or not found.`);
+        return;
+      } else if (response.status === 409) {
+        console.log(`File ${path} conflicted, maybe already deleted or not found.`);
+        return;
+      }
       throw new Error(`HTTP error! status: ${response.status}`);
     }
   }

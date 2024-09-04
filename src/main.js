@@ -13,11 +13,14 @@ function formatDate(dateString) {
 let parseButtonElement;
 let parseTableElement;
 let githubSyncFormElement;
+let customConfig;
 
 // Add this function
 function toggleParseAndSyncVisibility(show) {
     if (parseButtonElement) parseButtonElement.style.display = show ? 'block' : 'none';
-    if (githubSyncFormElement) githubSyncFormElement.style.display = show ? 'block' : 'none';
+    if (githubSyncFormElement && parseTableElement) {
+        githubSyncFormElement.style.display = (show && parseTableElement.innerHTML.trim() !== '') ? 'block' : 'none';
+    }
 }
 
 async function convertNotionPage(notionSecret, pageId) {
@@ -27,6 +30,8 @@ async function convertNotionPage(notionSecret, pageId) {
   const parseTableElement = document.getElementById('parseTable');
   const testMode = document.getElementById('testMode').checked;
   const resultTitleElement = document.getElementById('resultTitle');
+  const corsProxyUrl = document.getElementById('corsProxyUrl').value;
+  const corsProxyToken = document.getElementById('corsProxyToken').value;
 
   if (!notionSecret || !pageId) {
       resultElement.textContent = 'Error: Missing notion_secret or page_id';
@@ -43,7 +48,7 @@ async function convertNotionPage(notionSecret, pageId) {
           console.log("Test mode: Using stored data.");
           result = JSON.parse(storedData);
       } else {
-          result = await window.getNotionPageMarkdown(notionSecret, pageId);
+          result = await window.getNotionPageMarkdown(notionSecret, pageId, corsProxyUrl, corsProxyToken);
           
           if (result.error) {
               resultElement.textContent = result.error;
@@ -91,8 +96,14 @@ async function convertNotionPage(notionSecret, pageId) {
           if (parseTableElement) parseTableElement.style.display = 'none';
       }
   } catch (error) {
-      console.error("Error in convertNotionPage:", error); // Add this line for debugging
-      resultElement.textContent = `Error: ${error.message}`;
+      console.error("Error in convertNotionPage:", error);
+      let errorMessage = "An error occurred while converting the Notion page.";
+      if (error.message.includes("API token is invalid")) {
+          errorMessage = "The Notion API token is invalid. Please check your token and try again.";
+      } else if (error.status === 404) {
+          errorMessage = "The specified Notion page could not be found. Please check the page ID and ensure the page is shared with your integration.";
+      }
+      resultElement.textContent = errorMessage;
       resultElement.style.display = 'block';
       resultTitleElement.style.display = 'none';
       resultActionsElement.style.display = 'none';
@@ -107,24 +118,32 @@ function loadFromUrlParams() {
   const pageId = urlParams.get('page_id');
   const githubToken = urlParams.get('github_token');
   const githubRepo = urlParams.get('github_repo');
+  const corsProxyUrl = urlParams.get('cors_proxy_url');
+  const corsProxyToken = urlParams.get('cors_proxy_token');
 
   if (notionSecret) {
-      document.getElementById('notionSecret').value = notionSecret;
+    document.getElementById('notionSecret').value = notionSecret;
   }
   if (pageId) {
-      document.getElementById('pageId').value = pageId;
+    document.getElementById('pageId').value = pageId;
   }
   if (githubToken) {
-      document.getElementById('githubToken').value = githubToken;
+    document.getElementById('githubToken').value = githubToken;
   }
   if (githubRepo) {
-      const repoUrl = new URL(githubRepo);
-      const pathParts = repoUrl.pathname.split('/').filter(Boolean);
-      if (pathParts.length >= 2) {
-          const owner = pathParts[0];
-          const repo = pathParts[1];
-          document.getElementById('githubRepo').value = `https://github.com/${owner}/${repo}`;
-      }
+    const repoUrl = new URL(githubRepo);
+    const pathParts = repoUrl.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 2) {
+      const owner = pathParts[0];
+      const repo = pathParts[1];
+      document.getElementById('githubRepo').value = `https://github.com/${owner}/${repo}`;
+    }
+  }
+  if (corsProxyUrl) {
+    document.getElementById('corsProxyUrl').value = corsProxyUrl;
+  }
+  if (corsProxyToken) {
+    document.getElementById('corsProxyToken').value = corsProxyToken;
   }
 }
 
@@ -348,6 +367,71 @@ async function processAndUploadImages(id, content, basePath) {
     return { newContent, uploadedImages };
 }
 
+async function handleCustomConfiguration(content, github) {
+    if (!content) return [];
+
+    const customImages = [];
+    let currentDetails = '';
+    let inInsideDetails = false;
+
+    for (let i = 0; i < content.length; i++) {
+        const line = content[i];
+        if (line.includes('<summary>Custom Configuration</summary>')) {
+            inInsideDetails = true;
+            currentDetails = '<details>\n<summary>Custom Configuration</summary>\n';
+        } else if (inInsideDetails && line.includes('</details>')) {
+            currentDetails += '</details>';
+            customImages.push(currentDetails);
+            currentDetails = '';
+        } else if (inInsideDetails) {
+            currentDetails += line + '\n';
+            if (line.includes('<summary>')) {
+                const imageName = line.match(/<summary>(.*?)<\/summary>/)[1];
+                // Find the next line with any image syntax, starting from the current line
+                const imageUrlLine = content.slice(i).find(l => l.match(/!\[.*?\]\(.*?\)/));
+                if (imageUrlLine) {
+                    console.log('Found image:', imageName);
+                    console.log('Image URL line:', imageUrlLine);
+                    if (imageName === 'thumbnail.png') {
+                        await uploadImage(github, 'thumbnail.png', imageUrlLine);
+                    } else if (imageName === 'favicon.png') {
+                        await uploadImage(github, 'favicon.png', imageUrlLine);
+                    }
+                }
+            }
+        }
+    }
+
+    return customImages;
+}
+
+async function uploadImage(github, imageName, line) {
+    const match = line.match(/\((.*?)\)/);
+    if (!match || !match[1]) {
+        console.error(`No image URL found in line: ${line}`);
+        return;
+    }
+    const imageUrl = match[1];
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const blob = await response.blob();
+        const base64data = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
+        });
+        
+        const imagePath = `static/images/${imageName}`;
+        await github.createFile(imagePath, base64data, true);
+        console.log(`Uploaded custom image: ${imagePath}`);
+    } catch (error) {
+        console.error(`Error uploading custom image ${imageName}:`, error);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
     loadFromUrlParams();
 
@@ -362,7 +446,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
         e.preventDefault();
         const notionSecret = document.getElementById('notionSecret').value;
         const pageId = document.getElementById('pageId').value;
-        const testMode = document.getElementById('testMode').checked;
+        const testMode = document.getElementById('testMode')?.checked;
         
         // Hide Parse button, parse table, and GitHub sync form before starting conversion
         toggleParseAndSyncVisibility(false);
@@ -396,13 +480,16 @@ document.addEventListener('DOMContentLoaded', (event) => {
     document.getElementById('parseButton').addEventListener('click', () => {
         const markdownContent = document.getElementById('result').textContent;
         const parsedContent = parseMarkdown(markdownContent);
+        customConfig = parsedContent[0];
         console.log('Parsed Content:', parsedContent);
         const tableHtml = generateTableHtml(parsedContent);
         parseTableElement.innerHTML = '<h2>Chapter Structure</h2><div id="chapterStructureContainer">' + tableHtml + '</div>';
         parseTableElement.style.display = 'block';
         
         // Show the GitHub sync form after parsing
-        toggleParseAndSyncVisibility(true);
+        if (githubSyncFormElement) {
+            githubSyncFormElement.style.display = 'block';
+        }
     });
 
     // Modify the input event listener for the result element
@@ -429,10 +516,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
         try {
             await github.deleteFolder('content');
-            await github.deleteFolder('static/images');
+            await github.deleteFolder('static');
             console.log('Existing content and images folders deleted or not found');
 
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
+            const customImages = await handleCustomConfiguration(customConfig.content, github);
             const restructuredChapterStructure = restructureChapterStructure(chapterStructure);
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
             console.log('Folder structure:', folderStructure);
@@ -465,7 +553,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
             setTimeout(() => {
                 alert('GitHub sync completed');
-            }, 1000);
+            }, 5000);
         } catch (error) {
             console.error('Error during GitHub sync:', error);
             alert('Error during GitHub sync. Check console for details.');

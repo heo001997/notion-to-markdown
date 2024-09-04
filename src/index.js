@@ -1,16 +1,17 @@
 import { Client } from "@notionhq/client";
 import { NotionToMarkdown } from "notion-to-md";
 
-const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
-
 // Define the main function
-async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
+async function getNotionPageMarkdown(notion_secret, raw_target_page_id, corsProxyUrl, corsProxyToken) {
   // Validate the inputs
   if (!notion_secret) {
     throw new Error("Missing notion_secret");
   }
   if (!raw_target_page_id || !/^[a-f0-9]{32}$/.test(raw_target_page_id)) {
     throw new Error("Invalid page_id");
+  }
+  if (!corsProxyUrl) {
+    throw new Error("Missing corsProxyUrl");
   }
 
   // Parse the target_page_id
@@ -20,7 +21,7 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
   const notion = new Client({
     auth: notion_secret,
     fetch: (url, options) => {
-      return fetch(CORS_PROXY + url, {
+      return fetch(corsProxyUrl + url, {
         ...options,
         headers: {
           ...options.headers,
@@ -59,9 +60,15 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
   const storedData = localStorage.getItem('notionMarkdown');
   if (storedData) {
     const parsedData = JSON.parse(storedData);
-    if (parsedData.lastEditedTime === lastEditedTime) {
-      console.log("No changes detected. Using stored data.");
-      return { ...parsedData, title };
+    const currentTime = new Date().getTime();
+    if (parsedData.expirationTime && currentTime < parsedData.expirationTime) {
+      if (parsedData.lastEditedTime === lastEditedTime) {
+        console.log("No changes detected. Using stored data.");
+        return { ...parsedData, title };
+      }
+    } else {
+      console.log("Stored data expired or no expiration time set.");
+      localStorage.removeItem('notionMarkdown');
     }
   }
 
@@ -77,7 +84,8 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id) {
     const result = {
       lastEditedTime: lastEditedTime,
       title: title,
-      markdown: mdString.parent
+      markdown: mdString.parent,
+      expirationTime: new Date().getTime() + 3000 * 1000 // Set expiration time to 50 mins from now
     };
     // Store in localStorage
     localStorage.setItem('notionMarkdown', JSON.stringify(result));
