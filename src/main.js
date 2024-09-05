@@ -23,6 +23,17 @@ function toggleParseAndSyncVisibility(show) {
     }
 }
 
+function extractPageId(input) {
+  // Check if the input is a URL
+  if (input.startsWith('http')) {
+    const url = new URL(input);
+    const pathSegments = url.pathname.split('-');
+    return pathSegments[pathSegments.length - 1];
+  }
+  // If it's not a URL, assume it's already a page ID
+  return input;
+}
+
 async function convertNotionPage(notionSecret, pageId) {
   const convertButton = document.getElementById('convertButton');
   const resultElement = document.getElementById('result');
@@ -52,6 +63,9 @@ async function convertNotionPage(notionSecret, pageId) {
     convertButton.disabled = false;
     return;
   }
+
+  // Extract page ID if it's a URL
+  pageId = extractPageId(pageId);
 
   try {
     let result;
@@ -423,7 +437,7 @@ async function handleCustomConfiguration(content, github) {
 }
 
 async function uploadImage(github, imageName, line) {
-    const match = line.match(/\((.*?)\)/);
+    const match = line.match(/!\[.*?\]\((.*?)\)/);
     if (!match || !match[1]) {
         console.error(`No image URL found in line: ${line}`);
         return;
@@ -442,10 +456,11 @@ async function uploadImage(github, imageName, line) {
         });
         
         const imagePath = `static/images/${imageName}`;
-        await github.createFile(imagePath, base64data, true);
-        console.log(`Uploaded custom image: ${imagePath}`);
+        const result = await github.createFile(imagePath, base64data, true);
+        console.log(`Uploaded custom image: ${imagePath}`, result);
     } catch (error) {
         console.error(`Error uploading custom image ${imageName}:`, error);
+        throw error; // Re-throw the error to be caught by the caller
     }
 }
 
@@ -463,7 +478,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
         e.preventDefault();
         console.log('Form submitted');
         const notionSecret = document.getElementById('notionSecret').value;
-        const pageId = document.getElementById('pageId').value;
+        const pageId = extractPageId(document.getElementById('pageId').value);
+        document.getElementById('pageId').value = pageId;
         console.log('Calling convertNotionPage');
         await convertNotionPage(notionSecret, pageId);
         console.log('convertNotionPage completed');
@@ -495,7 +511,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
         const markdownContent = document.getElementById('result').textContent;
         const parsedContent = parseMarkdown(markdownContent);
         customConfig = parsedContent[0];
-        console.log('Parsed Content:', parsedContent);
         const tableHtml = generateTableHtml(parsedContent);
         parseTableElement.innerHTML = '<h2>Chapter Structure</h2><div id="chapterStructureContainer">' + tableHtml + '</div>';
         parseTableElement.style.display = 'block';
@@ -517,11 +532,18 @@ document.addEventListener('DOMContentLoaded', (event) => {
     });
 
     document.getElementById('syncButton').addEventListener('click', async () => {
+        const syncButton = document.getElementById('syncButton');
+        const originalButtonText = syncButton.textContent;
+        syncButton.textContent = 'Syncing...';
+        syncButton.disabled = true;
+
         const githubToken = document.getElementById('githubToken').value;
         const githubRepo = document.getElementById('githubRepo').value;
 
         if (!githubToken || !githubRepo) {
             alert('Please enter both GitHub token and repo URL');
+            syncButton.textContent = originalButtonText;
+            syncButton.disabled = false;
             return;
         }
 
@@ -529,48 +551,61 @@ document.addEventListener('DOMContentLoaded', (event) => {
         github.init(githubToken, githubRepo);
 
         try {
+            syncButton.textContent = 'Removing old content and images...';
             await github.deleteFolder('content');
             await github.deleteFolder('static');
             console.log('Existing content and images folders deleted or not found');
 
+            syncButton.textContent = 'Preparing content...';
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
             const customImages = await handleCustomConfiguration(customConfig.content, github);
             const restructuredChapterStructure = restructureChapterStructure(chapterStructure);
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
             console.log('Folder structure:', folderStructure);
 
+            let totalItems = folderStructure.length;
+            let completedItems = 0;
+
+            const filesToCreate = [];
+
             for (const item of folderStructure) {
                 try {
+                    syncButton.textContent = `Preparing ${completedItems + 1}/${totalItems}`;
                     const basePath = item.path.split('/').slice(0, -1).join('/');
                     const { newContent, uploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
                     
-                    // Upload the content file with updated image paths
-                    await github.createFile(item.path, newContent);
-                    console.log(`Created: ${item.path}`);
-                    updateSyncStatus(item.id, true);
-
-                    // Upload the images
+                    filesToCreate.push({ path: item.path, content: newContent });
+                    console.log(`Prepared: ${item.path}`);
+                    
                     for (const image of uploadedImages) {
-                        try {
-                            console.log(`Uploading image: ${image.path}, size: ${image.content.length} characters`);
-                            await github.createFile(image.path, image.content, true);
-                            console.log(`Uploaded image: ${image.path}`);
-                        } catch (error) {
-                            console.error(`Error uploading image ${image.path}:`, error);
-                        }
+                        filesToCreate.push({ path: image.path, content: image.content, isBinary: true });
+                        console.log(`Prepared image: ${image.path}`);
                     }
+                    completedItems++;
                 } catch (error) {
                     console.error(`Error processing item ${item.path}:`, error);
                     updateSyncStatus(item.id, false);
                 }
             }
 
+            syncButton.textContent = 'Creating files...';
+            await github.createFiles(filesToCreate);
+            console.log('All files created');
+
+            // Update sync status for all items
+            folderStructure.forEach(item => updateSyncStatus(item.id, true));
+
+            syncButton.textContent = 'Sync Complete';
             setTimeout(() => {
+                syncButton.textContent = originalButtonText;
+                syncButton.disabled = false;
                 alert('GitHub sync completed');
-            }, 5000);
+            }, 3000);
         } catch (error) {
             console.error('Error during GitHub sync:', error);
             alert('Error during GitHub sync. Check console for details.');
+            syncButton.textContent = originalButtonText;
+            syncButton.disabled = false;
         }
     });
 });
