@@ -242,15 +242,186 @@ class GitHubWrapper {
   }
 
   async createFiles(files) {
-    for (const file of files) {
-      try {
-        await this.createFile(file.path, file.content, file.isBinary);
-        console.log(`Created file: ${file.path}`);
-      } catch (error) {
-        console.error(`Error creating file ${file.path}:`, error);
-        throw error;
+    console.log(`Creating ${files.length} files...`);
+    
+    try {
+      const latestCommitSha = await this.getLatestCommitSha();
+      
+      // Create a new branch
+      const branchName = `create-files-${Date.now()}`;
+      await this.createBranch(branchName, latestCommitSha);
+
+      // Get the current tree
+      const treeData = await this.getTree(latestCommitSha);
+      
+      // Create blobs for images and prepare new tree
+      const newTree = [];
+      const binaryFiles = files.filter(file => file.isBinary);
+      const textFiles = files.filter(file => !file.isBinary);
+
+      // Process binary files in parallel with a maximum of 30 concurrent operations
+      const chunkSize = 30;
+      for (let i = 0; i < binaryFiles.length; i += chunkSize) {
+        const chunk = binaryFiles.slice(i, i + chunkSize);
+        const blobPromises = chunk.map(file => this.createBlob(file.content));
+        const blobShas = await Promise.all(blobPromises);
+        
+        chunk.forEach((file, index) => {
+          newTree.push({
+            path: file.path,
+            mode: '100644',
+            type: 'blob',
+            sha: blobShas[index]
+          });
+        });
       }
+
+      // Add text files to the tree
+      textFiles.forEach(file => {
+        newTree.push({
+          path: file.path,
+          mode: '100644',
+          type: 'blob',
+          content: file.content
+        });
+      });
+      
+      // Add existing tree items
+      newTree.push(...treeData.tree);
+      
+      const newTreeSha = await this.createTree(newTree);
+      
+      // Create a new commit
+      const newCommitSha = await this.createCommit(`Create ${files.length} files`, newTreeSha, [latestCommitSha]);
+      
+      // Update the branch reference
+      await this.updateBranchRef(branchName, newCommitSha);
+      
+      // Create a pull request
+      const prNumber = await this.createPullRequest(`Create ${files.length} files`, branchName, 'main');
+      
+      // Merge the pull request
+      await this.mergePullRequest(prNumber);
+      
+      console.log(`Created ${files.length} files successfully`);
+    } catch (error) {
+      console.error(`Error creating files:`, error);
+      throw error;
     }
+  }
+
+  async getLatestCommitSha(branch = 'main') {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/ref/heads/${branch}`, {
+      method: 'GET',
+      headers: this.headers
+    });
+    if (!response.ok) throw new Error(`Failed to get latest commit: ${response.statusText}`);
+    const data = await response.json();
+    return data.object.sha;
+  }
+
+  async createBranch(branchName, sha) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/refs`, {
+      method: 'POST',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ref: `refs/heads/${branchName}`,
+        sha: sha
+      })
+    });
+    if (!response.ok) throw new Error(`Failed to create branch: ${response.statusText}`);
+  }
+
+  async getTree(sha) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/trees/${sha}?recursive=1`, {
+      method: 'GET',
+      headers: this.headers
+    });
+    if (!response.ok) throw new Error(`Failed to get tree: ${response.statusText}`);
+    return response.json();
+  }
+
+  async createTree(tree) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/trees`, {
+      method: 'POST',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tree })
+    });
+    if (!response.ok) throw new Error(`Failed to create new tree: ${response.statusText}`);
+    const data = await response.json();
+    return data.sha;
+  }
+
+  async createCommit(message, tree, parents) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/commits`, {
+      method: 'POST',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message, tree, parents })
+    });
+    if (!response.ok) throw new Error(`Failed to create commit: ${response.statusText}`);
+    const data = await response.json();
+    return data.sha;
+  }
+
+  async updateBranchRef(branch, sha) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/refs/heads/${branch}`, {
+      method: 'PATCH',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ sha, force: true })
+    });
+    if (!response.ok) throw new Error(`Failed to update branch reference: ${response.statusText}`);
+  }
+
+  async createPullRequest(title, head, base) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/pulls`, {
+      method: 'POST',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ title, head, base })
+    });
+    if (!response.ok) throw new Error(`Failed to create pull request: ${response.statusText}`);
+    const data = await response.json();
+    return data.number;
+  }
+
+  async mergePullRequest(pullNumber) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/pulls/${pullNumber}/merge`, {
+      method: 'PUT',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ merge_method: 'merge' })
+    });
+    if (!response.ok) throw new Error(`Failed to merge pull request: ${response.statusText}`);
+  }
+
+  async createBlob(content) {
+    const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/blobs`, {
+      method: 'POST',
+      headers: {
+        ...this.headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ content, encoding: 'base64' })
+    });
+    if (!response.ok) throw new Error(`Failed to create blob: ${response.statusText}`);
+    const data = await response.json();
+    return data.sha;
   }
 }
 

@@ -573,6 +573,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     syncButton.textContent = `Preparing ${completedItems + 1}/${totalItems}`;
                     const basePath = item.path.split('/').slice(0, -1).join('/');
                     const { newContent, uploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
+                    console.log('uploadedImages: ', uploadedImages);
                     
                     filesToCreate.push({ path: item.path, content: newContent });
                     console.log(`Prepared: ${item.path}`);
