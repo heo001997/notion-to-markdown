@@ -398,7 +398,7 @@ async function processAndUploadImages(id, content, basePath) {
     return { newContent, uploadedImages };
 }
 
-async function handleCustomConfiguration(content, github) {
+async function handleCustomConfiguration(content, github, uploadedImages) {
     if (!content) return [];
 
     const customImages = [];
@@ -416,20 +416,6 @@ async function handleCustomConfiguration(content, github) {
             currentDetails = '';
         } else if (inInsideDetails) {
             currentDetails += line + '\n';
-            if (line.includes('<summary>')) {
-                const imageName = line.match(/<summary>(.*?)<\/summary>/)[1];
-                // Find the next line with any image syntax, starting from the current line
-                const imageUrlLine = content.slice(i).find(l => l.match(/!\[.*?\]\(.*?\)/));
-                if (imageUrlLine) {
-                    console.log('Found image:', imageName);
-                    console.log('Image URL line:', imageUrlLine);
-                    if (imageName === 'thumbnail.png') {
-                        await uploadImage(github, 'thumbnail.png', imageUrlLine);
-                    } else if (imageName === 'favicon.png') {
-                        await uploadImage(github, 'favicon.png', imageUrlLine);
-                    }
-                }
-            }
         }
     }
 
@@ -440,7 +426,7 @@ async function uploadImage(github, imageName, line) {
     const match = line.match(/!\[.*?\]\((.*?)\)/);
     if (!match || !match[1]) {
         console.error(`No image URL found in line: ${line}`);
-        return;
+        return null;
     }
     const imageUrl = match[1];
     try {
@@ -458,9 +444,10 @@ async function uploadImage(github, imageName, line) {
         const imagePath = `static/images/${imageName}`;
         const result = await github.createFile(imagePath, base64data, true);
         console.log(`Uploaded custom image: ${imagePath}`, result);
+        return { path: imagePath, content: base64data };
     } catch (error) {
         console.error(`Error uploading custom image ${imageName}:`, error);
-        throw error; // Re-throw the error to be caught by the caller
+        return null;
     }
 }
 
@@ -558,7 +545,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
             syncButton.textContent = 'Preparing content...';
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
-            const customImages = await handleCustomConfiguration(customConfig.content, github);
+            const uploadedImages = [];
+            const customImages = await handleCustomConfiguration(customConfig.content, github, uploadedImages);
             const restructuredChapterStructure = restructureChapterStructure(chapterStructure);
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
             console.log('Folder structure:', folderStructure);
@@ -572,21 +560,24 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 try {
                     syncButton.textContent = `Preparing ${completedItems + 1}/${totalItems}`;
                     const basePath = item.path.split('/').slice(0, -1).join('/');
-                    const { newContent, uploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
-                    console.log('uploadedImages: ', uploadedImages);
+                    const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
+                    console.log('uploadedImages: ', itemUploadedImages);
                     
                     filesToCreate.push({ path: item.path, content: newContent });
                     console.log(`Prepared: ${item.path}`);
                     
-                    for (const image of uploadedImages) {
-                        filesToCreate.push({ path: image.path, content: image.content, isBinary: true });
-                        console.log(`Prepared image: ${image.path}`);
-                    }
+                    uploadedImages.push(...itemUploadedImages);
                     completedItems++;
                 } catch (error) {
                     console.error(`Error processing item ${item.path}:`, error);
                     updateSyncStatus(item.id, false);
                 }
+            }
+
+            // After the loop, add all uploadedImages to filesToCreate
+            for (const image of uploadedImages) {
+                filesToCreate.push({ path: image.path, content: image.content, isBinary: true });
+                console.log(`Prepared image: ${image.path}`);
             }
 
             syncButton.textContent = 'Creating files...';
