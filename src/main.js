@@ -17,7 +17,17 @@ let customConfig;
 
 // Add this function
 function toggleParseAndSyncVisibility(show) {
-    if (parseButtonElement) parseButtonElement.style.display = show ? 'block' : 'none';
+    if (parseButtonElement) {
+        parseButtonElement.style.display = show ? 'block' : 'none';
+        if (show) {
+            setTimeout(() => {
+                window.scrollTo({
+                    top: document.body.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
+    }
     if (githubSyncFormElement && parseTableElement) {
         githubSyncFormElement.style.display = (show && parseTableElement.innerHTML.trim() !== '') ? 'block' : 'none';
     }
@@ -197,7 +207,7 @@ function generateTableHtml(parsedContent) {
           <td>${title}</td>
           <td>${contentPreview}</td>
           <td><textarea class="content-textarea" readonly>${fullContent}</textarea></td>
-          <td class="sync-status">Pending</td>
+          <td class="sync-status sync-status-cell">Pending</td>
       </tr>`;
       id++;
     }
@@ -345,13 +355,23 @@ function updateSyncStatus(id, status) {
   const row = document.querySelector(`#chapterStructureContainer tr[data-id="${id}"]`);
   if (row) {
     const statusCell = row.querySelector('.sync-status');
-    statusCell.textContent = status;
     if (status === 'Success') {
-      statusCell.innerHTML = '&#x2705;'; // Green tick
+      statusCell.innerHTML = '✅';
+      statusCell.style.fontSize = ''; // Reset to original style
     } else if (status === 'Error') {
-      statusCell.innerHTML = '&#x274C;'; // Red cross
+      statusCell.innerHTML = '❌';
+      statusCell.style.fontSize = ''; // Reset to original style
+    } else if (status === 'Preparing') {
+      statusCell.textContent = 'Preparing...';
+      statusCell.style.fontSize = ''; // Reset to original style
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (status === '✅ Prepared') {
+      statusCell.textContent = status;
+      statusCell.style.fontSize = '14px'; // Set font size to 14px only for this status
+    } else {
+      statusCell.textContent = status;
+      statusCell.style.fontSize = ''; // Reset to original style
     }
-    statusCell.style.fontSize = '20px';
   }
 }
 
@@ -544,6 +564,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
         // Show the GitHub sync form after parsing
         if (githubSyncFormElement) {
             githubSyncFormElement.style.display = 'block';
+            // Scroll the githubSyncForm into view
+            githubSyncFormElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     });
 
@@ -559,9 +581,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     document.getElementById('syncButton').addEventListener('click', async () => {
         const syncButton = document.getElementById('syncButton');
+        const syncStatus = document.getElementById('syncStatus');
         const originalButtonText = syncButton.textContent;
         syncButton.textContent = 'Syncing...';
         syncButton.disabled = true;
+        syncStatus.style.display = 'flex';
 
         const githubToken = document.getElementById('githubToken').value;
         const githubRepo = document.getElementById('githubRepo').value;
@@ -570,6 +594,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
             alert('Please enter both GitHub token and repo URL');
             syncButton.textContent = originalButtonText;
             syncButton.disabled = false;
+            syncStatus.style.display = 'none';
             return;
         }
 
@@ -606,7 +631,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     
                     uploadedImages.push(...itemUploadedImages);
                     completedItems++;
-                    updateSyncStatus(item.id, `✔️ Prepared`);
+                    updateSyncStatus(item.id, `✅ Prepared`);
                 } catch (error) {
                     console.error(`Error processing item ${item.path}:`, error);
                     updateSyncStatus(item.id, 'Error');
@@ -627,16 +652,25 @@ document.addEventListener('DOMContentLoaded', (event) => {
             folderStructure.forEach(item => updateSyncStatus(item.id, 'Success'));
 
             syncButton.textContent = 'Sync Complete';
-            setTimeout(() => {
-                syncButton.textContent = originalButtonText;
-                syncButton.disabled = false;
-                alert('GitHub sync completed');
-            }, 3000);
+            syncButton.classList.add('sync-complete');
+            syncStatus.innerHTML = '<p>✅ Sync Complete!</p><p>&nbsp;Your content has been successfully uploaded to GitHub.</p>';
+            syncStatus.style.display = 'flex';
+            syncStatus.classList.add('sync-success');
+            syncButton.textContent = originalButtonText;
+            syncButton.disabled = false;
+
+            // Trigger confetti effect
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
         } catch (error) {
             console.error('Error during GitHub sync:', error);
             alert('Error during GitHub sync. Check console for details.');
             syncButton.textContent = originalButtonText;
             syncButton.disabled = false;
+            syncStatus.style.display = 'none';
         }
     });
 });

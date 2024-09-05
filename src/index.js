@@ -1,5 +1,6 @@
 import { Client } from "@notionhq/client";
 import { NotionToMarkdown } from "notion-to-md";
+import confetti from 'canvas-confetti';
 
 // Define the main function
 async function getNotionPageMarkdown(notion_secret, raw_target_page_id, corsProxyUrl, corsProxyToken) {
@@ -99,3 +100,4 @@ async function getNotionPageMarkdown(notion_secret, raw_target_page_id, corsProx
 
 // Expose the function to the global scope (window object)
 window.getNotionPageMarkdown = getNotionPageMarkdown;
+window.confetti = confetti;

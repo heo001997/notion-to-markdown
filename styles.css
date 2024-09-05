@@ -295,12 +295,56 @@ h1 {
 }
 
 .sync-status {
+  display: flex;
   font-size: 20px;
   color: #888;
   text-align: center;
-  display: flex;
   justify-content: center;
   align-items: center;
   height: 100%;
-  min-height: 100px; /* Add this line */
+  min-height: 100px;
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-top: 20px;
+}
+
+.sync-status-cell {
+  background-color: unset;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-top: 0;
+  box-shadow: none;
+}
+
+.sync-status-init-single {
+  display: none;
+}
+
+.sync-complete {
+    background-color: #4CAF50;
+    color: white;
+    transition: background-color 0.3s ease;
+}
+
+.sync-complete:hover {
+    background-color: #45a049;
+}
+
+.sync-success {
+    background-color: #e8f5e9;
+    border: 1px solid #4CAF50;
+    color: #2e7d32;
+    padding: 15px;
+    border-radius: 4px;
+    text-align: center;
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
