@@ -180,7 +180,7 @@ function loadFromUrlParams() {
 
 function generateTableHtml(parsedContent) {
   let tableHtml = '<table class="sync-table">';
-  tableHtml += '<thead><tr><th>ID</th><th>Level</th><th>Title</th><th>Content Preview</th><th>Content</th><th>Sync</th></tr></thead>';
+  tableHtml += '<thead><tr><th>ID</th><th>Level</th><th>Title</th><th>Content Preview</th><th>Content</th><th>Status</th></tr></thead>';
   tableHtml += '<tbody>';
 
   let id = 1;
@@ -197,7 +197,7 @@ function generateTableHtml(parsedContent) {
           <td>${title}</td>
           <td>${contentPreview}</td>
           <td><textarea class="content-textarea" readonly>${fullContent}</textarea></td>
-          <td class="sync-status">&#x25CF;</td>
+          <td class="sync-status">Pending</td>
       </tr>`;
       id++;
     }
@@ -340,12 +340,17 @@ ${item.content}
   return structure;
 }
 
-function updateSyncStatus(id, success) {
+function updateSyncStatus(id, status) {
   console.log('Updating sync status for:', id);
   const row = document.querySelector(`#chapterStructureContainer tr[data-id="${id}"]`);
   if (row) {
     const statusCell = row.querySelector('.sync-status');
-    statusCell.innerHTML = success ? '&#x2705;' : '&#x274C;'; // Green tick or red cross
+    statusCell.textContent = status;
+    if (status === 'Success') {
+      statusCell.innerHTML = '&#x2705;'; // Green tick
+    } else if (status === 'Error') {
+      statusCell.innerHTML = '&#x274C;'; // Red cross
+    }
     statusCell.style.fontSize = '20px';
   }
 }
@@ -355,6 +360,7 @@ async function processAndUploadImages(id, content, basePath) {
     let match;
     let newContent = content;
     const uploadedImages = [];
+    const imagesToProcess = [];
 
     while ((match = imgRegex.exec(content)) !== null) {
         const oldImageUrl = match[1];
@@ -363,10 +369,23 @@ async function processAndUploadImages(id, content, basePath) {
         const randomDigits = Math.floor(100000 + Math.random() * 900000);
         const newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
         const newImagePathInContent = newImagePath.replace(/^static/, '');
-        console.log('Processing image:', oldImageUrl);
+        
+        imagesToProcess.push({
+            oldImageUrl,
+            newImagePath,
+            newImagePathInContent
+        });
+    }
 
+    // Too sad that chrome limits the number of concurrent connections to 6
+    // Adjust this number based on your needs and system capabilities
+    const concurrencyLimit = 10; 
+    const queue = imagesToProcess.map((image, index) => ({ image, index }));
+    const results = new Array(imagesToProcess.length);
+
+    async function processImage({ image, index }) {
         try {
-            const response = await fetch(oldImageUrl);
+            const response = await fetch(image.oldImageUrl);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -384,16 +403,36 @@ async function processAndUploadImages(id, content, basePath) {
             });
 
             if (base64data) {
-                uploadedImages.push({ path: newImagePath, content: base64data });
-                newContent = newContent.replace(oldImageUrl, newImagePathInContent);
-                console.log('Image processed successfully:', newImagePath);
+                uploadedImages.push({ path: image.newImagePath, content: base64data });
+                newContent = newContent.replace(image.oldImageUrl, image.newImagePathInContent);
+                console.log('Image processed successfully:', image.newImagePath);
+                results[index] = { success: true, newImagePathInContent: image.newImagePathInContent };
             } else {
-                console.error('Failed to convert image to base64:', oldImageUrl);
+                console.error('Failed to convert image to base64:', image.oldImageUrl);
+                results[index] = { success: false };
             }
         } catch (error) {
-            console.error(`Error processing image ${oldImageUrl}:`, error);
+            console.error(`Error processing image ${image.oldImageUrl}:`, error);
+            results[index] = { success: false };
         }
     }
+
+    async function worker() {
+        while (queue.length) {
+            const item = queue.shift();
+            await processImage(item);
+        }
+    }
+
+    const workers = Array(concurrencyLimit).fill().map(worker);
+    await Promise.all(workers);
+
+    // Apply all successful replacements to newContent
+    results.forEach(result => {
+        if (result && result.success) {
+            newContent = newContent.replace(result.oldImageUrl, result.newImagePathInContent);
+        }
+    });
 
     return { newContent, uploadedImages };
 }
@@ -539,8 +578,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
         try {
             syncButton.textContent = 'Removing old content and images...';
-            await github.deleteFolder('content');
-            await github.deleteFolder('static');
+            await github.deleteFolders(['content', 'static']);
             console.log('Existing content and images folders deleted or not found');
 
             syncButton.textContent = 'Preparing content...';
@@ -558,7 +596,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
             for (const item of folderStructure) {
                 try {
-                    syncButton.textContent = `Preparing ${completedItems + 1}/${totalItems}`;
+                    updateSyncStatus(item.id, `Preparing`);
                     const basePath = item.path.split('/').slice(0, -1).join('/');
                     const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
                     console.log('uploadedImages: ', itemUploadedImages);
@@ -568,9 +606,10 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     
                     uploadedImages.push(...itemUploadedImages);
                     completedItems++;
+                    updateSyncStatus(item.id, `✔️ Prepared`);
                 } catch (error) {
                     console.error(`Error processing item ${item.path}:`, error);
-                    updateSyncStatus(item.id, false);
+                    updateSyncStatus(item.id, 'Error');
                 }
             }
 
@@ -585,7 +624,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
             console.log('All files created');
 
             // Update sync status for all items
-            folderStructure.forEach(item => updateSyncStatus(item.id, true));
+            folderStructure.forEach(item => updateSyncStatus(item.id, 'Success'));
 
             syncButton.textContent = 'Sync Complete';
             setTimeout(() => {

@@ -71,8 +71,8 @@ class GitHubWrapper {
     }
   }
 
-  async deleteFolder(path, maxRetries = 5) {
-    console.log(`Deleting folder: ${path}`);
+  async deleteFolders(paths, maxRetries = 5) {
+    console.log(`Deleting folders: ${paths.join(', ')}`);
     
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
@@ -91,7 +91,7 @@ class GitHubWrapper {
         const latestCommitSha = await getLatestCommitSha.call(this);
 
         // Create a new branch
-        const branchName = `delete-${path.replace(/\//g, '-')}-${Date.now()}`;
+        const branchName = `delete-folders-${Date.now()}`;
         const createBranchResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/refs`, {
           method: 'POST',
           headers: {
@@ -120,9 +120,9 @@ class GitHubWrapper {
 
         const treeData = await treeResponse.json();
 
-        // Create a new tree with the folder removed
+        // Create a new tree with the folders removed
         const newTree = treeData.tree
-          .filter(item => !item.path.startsWith(path))
+          .filter(item => !paths.some(path => item.path.startsWith(path)))
           .map(item => ({
             path: item.path,
             mode: item.mode,
@@ -155,7 +155,7 @@ class GitHubWrapper {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            message: `Delete ${path}`,
+            message: `Delete folders: ${paths.join(', ')}`,
             tree: newTreeData.sha,
             parents: [latestCommitSha]
           })
@@ -192,10 +192,10 @@ class GitHubWrapper {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            title: `Delete ${path}`,
+            title: `Delete folders: ${paths.join(', ')}`,
             head: branchName,
             base: 'main',
-            body: `This PR deletes the folder ${path}`
+            body: `This PR deletes the folders: ${paths.join(', ')}`
           })
         });
 
@@ -221,7 +221,7 @@ class GitHubWrapper {
           throw new Error(`Failed to merge pull request: ${mergePrResponse.statusText}`);
         }
 
-        console.log(`Folder ${path} deleted successfully`);
+        console.log(`Folders ${paths.join(', ')} deleted successfully`);
       } catch (error) {
         if (retryCount < maxRetries) {
           const waitTime = Math.pow(2, retryCount) * 1000; // Exponential backoff
@@ -236,7 +236,7 @@ class GitHubWrapper {
     try {
       await attemptDelete.call(this);
     } catch (error) {
-      console.error(`Error deleting folder ${path}:`, error);
+      console.error(`Error deleting folders ${paths.join(', ')}:`, error);
       throw error;
     }
   }
