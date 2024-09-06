@@ -663,4 +663,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
             syncStatus.style.display = 'none';
         }
     });
+
+    document.getElementById('corsProxyLink').addEventListener('click', function(e) {
+        document.getElementById('corsProxyUrl').value = 'https://cors-anywhere.herokuapp.com/';
+    });
 });
