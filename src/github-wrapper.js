@@ -116,9 +116,7 @@ class GitHubWrapper {
 
       const newTreeSha = await this.createTree(newTree);
       
-      debugger
       const newCommitSha = await this.createCommit(`Delete folders and create files`, newTreeSha, [latestCommitSha]);
-      debugger
       
       await this.updateBranchRef(branchName, newCommitSha);
       
