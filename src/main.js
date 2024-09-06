@@ -60,8 +60,10 @@ async function convertNotionPage(notionSecret, pageId) {
   convertButton.disabled = true;
 
   // Show loading state
-  resultElement.textContent = 'Loading...';
-  resultElement.style.display = 'block';
+  resultElement.innerHTML = '<div class="loading-spinner"></div>';
+  resultElement.style.display = 'flex';
+  resultElement.style.justifyContent = 'center';
+  resultElement.style.alignItems = 'center';
   resultTitleElement.style.display = 'none';
   resultActionsElement.style.display = 'none';
   toggleParseAndSyncVisibility(false);
