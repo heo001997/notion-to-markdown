@@ -602,10 +602,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
         github.init(githubToken, githubRepo);
 
         try {
-            syncButton.textContent = 'Removing old content and images...';
-            await github.deleteFolders(['content', 'static']);
-            console.log('Existing content and images folders deleted or not found');
-
             syncButton.textContent = 'Preparing content...';
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
             const uploadedImages = [];
@@ -614,9 +610,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
             console.log('Folder structure:', folderStructure);
 
-            let totalItems = folderStructure.length;
-            let completedItems = 0;
-
             const filesToCreate = [];
 
             for (const item of folderStructure) {
@@ -624,13 +617,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     updateSyncStatus(item.id, `Preparing`);
                     const basePath = item.path.split('/').slice(0, -1).join('/');
                     const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
-                    console.log('uploadedImages: ', itemUploadedImages);
                     
                     filesToCreate.push({ path: item.path, content: newContent });
                     console.log(`Prepared: ${item.path}`);
                     
                     uploadedImages.push(...itemUploadedImages);
-                    completedItems++;
                     updateSyncStatus(item.id, `✅ Prepared`);
                 } catch (error) {
                     console.error(`Error processing item ${item.path}:`, error);
@@ -638,17 +629,15 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 }
             }
 
-            // After the loop, add all uploadedImages to filesToCreate
             for (const image of uploadedImages) {
                 filesToCreate.push({ path: image.path, content: image.content, isBinary: true });
                 console.log(`Prepared image: ${image.path}`);
             }
 
-            syncButton.textContent = 'Creating files...';
-            await github.createFiles(filesToCreate);
-            console.log('All files created');
+            syncButton.textContent = 'Updating GitHub...';
+            await github.deleteAndCreateFiles(['content', 'static'], filesToCreate);
+            console.log('All files updated');
 
-            // Update sync status for all items
             folderStructure.forEach(item => updateSyncStatus(item.id, 'Success'));
 
             syncButton.textContent = 'Sync Complete';
@@ -659,7 +648,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
             syncButton.textContent = originalButtonText;
             syncButton.disabled = false;
 
-            // Trigger confetti effect
             confetti({
                 particleCount: 100,
                 spread: 70,

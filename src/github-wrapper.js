@@ -71,212 +71,40 @@ class GitHubWrapper {
     }
   }
 
-  async deleteFolders(paths, maxRetries = 5) {
-    console.log(`Deleting folders: ${paths.join(', ')}`);
-    
-    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-    
-    async function getLatestCommitSha(branch = 'main') {
-      const refResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/ref/heads/${branch}`, {
-        method: 'GET',
-        headers: this.headers
-      });
-      if (!refResponse.ok) throw new Error(`Failed to get latest commit: ${refResponse.statusText}`);
-      const refData = await refResponse.json();
-      return refData.object.sha;
-    }
-
-    async function attemptDelete(retryCount = 0) {
-      try {
-        const latestCommitSha = await getLatestCommitSha.call(this);
-
-        // Create a new branch
-        const branchName = `delete-folders-${Date.now()}`;
-        const createBranchResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/refs`, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ref: `refs/heads/${branchName}`,
-            sha: latestCommitSha
-          })
-        });
-
-        if (!createBranchResponse.ok) {
-          throw new Error(`Failed to create branch: ${createBranchResponse.statusText}`);
-        }
-
-        // Get the tree of the latest commit
-        const treeResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/trees/${latestCommitSha}?recursive=1`, {
-          method: 'GET',
-          headers: this.headers
-        });
-
-        if (!treeResponse.ok) {
-          throw new Error(`Failed to get tree: ${treeResponse.statusText}`);
-        }
-
-        const treeData = await treeResponse.json();
-
-        // Create a new tree with the folders removed
-        const newTree = treeData.tree
-          .filter(item => !paths.some(path => item.path.startsWith(path)))
-          .map(item => ({
-            path: item.path,
-            mode: item.mode,
-            type: item.type,
-            sha: item.sha
-          }));
-
-        const createTreeResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/trees`, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            tree: newTree
-          })
-        });
-
-        if (!createTreeResponse.ok) {
-          throw new Error(`Failed to create new tree: ${createTreeResponse.statusText}`);
-        }
-
-        const newTreeData = await createTreeResponse.json();
-
-        // Create a new commit on the new branch
-        const commitResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/commits`, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: `Delete folders: ${paths.join(', ')}`,
-            tree: newTreeData.sha,
-            parents: [latestCommitSha]
-          })
-        });
-
-        if (!commitResponse.ok) {
-          throw new Error(`Failed to create commit: ${commitResponse.statusText}`);
-        }
-
-        const commitData = await commitResponse.json();
-
-        // Update the new branch to point to the new commit
-        const updateBranchResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/refs/heads/${branchName}`, {
-          method: 'PATCH',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            sha: commitData.sha,
-            force: true
-          })
-        });
-
-        if (!updateBranchResponse.ok) {
-          throw new Error(`Failed to update branch: ${updateBranchResponse.statusText}`);
-        }
-
-        // Create a pull request
-        const createPrResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/pulls`, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            title: `Delete folders: ${paths.join(', ')}`,
-            head: branchName,
-            base: 'main',
-            body: `This PR deletes the folders: ${paths.join(', ')}`
-          })
-        });
-
-        if (!createPrResponse.ok) {
-          throw new Error(`Failed to create pull request: ${createPrResponse.statusText}`);
-        }
-
-        const prData = await createPrResponse.json();
-
-        // Merge the pull request
-        const mergePrResponse = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/pulls/${prData.number}/merge`, {
-          method: 'PUT',
-          headers: {
-            ...this.headers,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            merge_method: 'merge'
-          })
-        });
-
-        if (!mergePrResponse.ok) {
-          throw new Error(`Failed to merge pull request: ${mergePrResponse.statusText}`);
-        }
-
-        console.log(`Folders ${paths.join(', ')} deleted successfully`);
-      } catch (error) {
-        if (retryCount < maxRetries) {
-          const waitTime = Math.pow(2, retryCount) * 1000; // Exponential backoff
-          console.log(`Error occurred. Retrying in ${waitTime}ms...`);
-          await delay(waitTime);
-          return attemptDelete.call(this, retryCount + 1);
-        }
-        throw error;
-      }
-    }
-
-    try {
-      await attemptDelete.call(this);
-    } catch (error) {
-      console.error(`Error deleting folders ${paths.join(', ')}:`, error);
-      throw error;
-    }
-  }
-
-  async createFiles(files) {
-    console.log(`Creating ${files.length} files...`);
+  async deleteAndCreateFiles(foldersToDelete, filesToCreate) {
+    console.log(`Deleting folders and creating files in one commit...`);
     
     try {
       const latestCommitSha = await this.getLatestCommitSha();
       
-      // Create a new branch
-      const branchName = `create-files-${Date.now()}`;
+      const branchName = `update-content-${Date.now()}`;
       await this.createBranch(branchName, latestCommitSha);
 
-      // Get the current tree
       const treeData = await this.getTree(latestCommitSha);
       
-      // Create blobs for images and prepare new tree
-      const newTree = [];
-      const binaryFiles = files.filter(file => file.isBinary);
-      const textFiles = files.filter(file => !file.isBinary);
+      const newTree = treeData.tree
+        .filter(item => !foldersToDelete.some(folder => item.path.startsWith(folder)))
+        .map(item => ({
+          path: item.path,
+          mode: item.mode,
+          type: item.type,
+          sha: item.sha
+        }));
 
-      // Process binary files in parallel with a maximum of 30 concurrent operations
-      const chunkSize = 30;
-      for (let i = 0; i < binaryFiles.length; i += chunkSize) {
-        const chunk = binaryFiles.slice(i, i + chunkSize);
-        const blobPromises = chunk.map(file => this.createBlob(file.content));
-        const blobShas = await Promise.all(blobPromises);
-        
-        chunk.forEach((file, index) => {
-          newTree.push({
-            path: file.path,
-            mode: '100644',
-            type: 'blob',
-            sha: blobShas[index]
-          });
+      const binaryFiles = filesToCreate.filter(file => file.isBinary);
+      const textFiles = filesToCreate.filter(file => !file.isBinary);
+
+      const blobShas = await this.createBlobs(binaryFiles.map(file => file.content));
+
+      binaryFiles.forEach((file, index) => {
+        newTree.push({
+          path: file.path,
+          mode: '100644',
+          type: 'blob',
+          sha: blobShas[index]
         });
-      }
+      });
 
-      // Add text files to the tree
       textFiles.forEach(file => {
         newTree.push({
           path: file.path,
@@ -285,27 +113,22 @@ class GitHubWrapper {
           content: file.content
         });
       });
-      
-      // Add existing tree items
-      newTree.push(...treeData.tree);
-      
+
       const newTreeSha = await this.createTree(newTree);
       
-      // Create a new commit
-      const newCommitSha = await this.createCommit(`Create ${files.length} files`, newTreeSha, [latestCommitSha]);
+      debugger
+      const newCommitSha = await this.createCommit(`Delete folders and create files`, newTreeSha, [latestCommitSha]);
+      debugger
       
-      // Update the branch reference
       await this.updateBranchRef(branchName, newCommitSha);
       
-      // Create a pull request
-      const prNumber = await this.createPullRequest(`Create ${files.length} files`, branchName, 'main');
+      const prNumber = await this.createPullRequest(`Delete folders and create files`, branchName, 'main');
       
-      // Merge the pull request
       await this.mergePullRequest(prNumber);
       
-      console.log(`Created ${files.length} files successfully`);
+      console.log(`Folders deleted and files created successfully in one commit`);
     } catch (error) {
-      console.error(`Error creating files:`, error);
+      console.error(`Error deleting folders and creating files:`, error);
       throw error;
     }
   }
@@ -410,7 +233,21 @@ class GitHubWrapper {
     if (!response.ok) throw new Error(`Failed to merge pull request: ${response.statusText}`);
   }
 
-  async createBlob(content) {
+  async createBlobs(contents) {
+    const batchSize = 40;
+    const results = [];
+
+    for (let i = 0; i < contents.length; i += batchSize) {
+      const batch = contents.slice(i, i + batchSize);
+      const promises = batch.map(content => this.createSingleBlob(content));
+      const batchResults = await Promise.all(promises);
+      results.push(...batchResults);
+    }
+
+    return results;
+  }
+
+  async createSingleBlob(content) {
     const response = await fetch(`${this.apiUrl}/repos/${this.owner}/${this.repo}/git/blobs`, {
       method: 'POST',
       headers: {
