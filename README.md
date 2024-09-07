@@ -1,7 +1,8 @@
 # Notion To Markdown
 
 Website: https://notion-to-markdown.bamidev.com/
-How to use (Workshop): https://notion-to-md.bamidev.com
+
+Workshop how to use: https://notion-to-md.bamidev.com
 
 This is a free tool to convert YOUR Notion pages to Markdown.
 

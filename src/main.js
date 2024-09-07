@@ -385,18 +385,28 @@ function updateSyncStatus(id, status) {
 }
 
 async function processAndUploadImages(id, content, basePath) {
-    const imgRegex = /!\[.*?\]\((.*?)\)/g;
-    let match;
-    let newContent = content;
-    const uploadedImages = [];
-    const imagesToProcess = [];
-
+  const imgRegex = /!\[.*?\]\((.*?)\)/g;
+  let match;
+  let newContent = content;
+  const uploadedImages = [];
+  const imagesToProcess = [];
+  
     while ((match = imgRegex.exec(content)) !== null) {
-        const oldImageUrl = match[1];
+        let oldImageUrl = match[1];
+        if (id === '-1' || id === '-2') {
+          oldImageUrl = oldImageUrl.replace(/&amp;/g, '&');
+        }
         const imageName = oldImageUrl.split('/').pop().split('?')[0];
         const imageBasePath = basePath.replace(/^content\//, '');
         const randomDigits = Math.floor(100000 + Math.random() * 900000);
-        const newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
+        let newImagePath;
+        if (id === '-1') {
+          newImagePath = `static/images/favicon.png`
+        } else if (id === '-2') {
+          newImagePath = `static/images/thumbnail.png`
+        } else {
+          newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
+        }
         const newImagePathInContent = newImagePath.replace(/^static/, '');
         
         imagesToProcess.push({
@@ -466,57 +476,22 @@ async function processAndUploadImages(id, content, basePath) {
     return { newContent, uploadedImages };
 }
 
-async function handleCustomConfiguration(content, github, uploadedImages) {
-    if (!content) return [];
+function parseCustomConfiguration(content) {
+    // Remove the outer <details> tag with "Custom Configuration" summary
+    const innerContent = content.replace(/<details>\s*<summary>Custom Configuration<\/summary>([\s\S]*?)<\/details>/g, '$1');
 
-    const customImages = [];
-    let currentDetails = '';
-    let inInsideDetails = false;
+    // Match individual <details> blocks
+    const detailsRegex = /<details>[\s\S]*?<\/details>/g;
+    const matches = innerContent.match(detailsRegex) || [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(matches[0], 'text/html');
+    const detailsElements = doc.querySelectorAll('details');
+    
+    // Convert NodeList to array and map to extract outer HTML of each <details> block
+    const detailsArray = Array.from(detailsElements).map(detail => detail.outerHTML);
+    console.log('Parsed custom configuration:', detailsArray);
 
-    for (let i = 0; i < content.length; i++) {
-        const line = content[i];
-        if (line.includes('<summary>Custom Configuration</summary>')) {
-            inInsideDetails = true;
-            currentDetails = '<details>\n<summary>Custom Configuration</summary>\n';
-        } else if (inInsideDetails && line.includes('</details>')) {
-            currentDetails += '</details>';
-            customImages.push(currentDetails);
-            currentDetails = '';
-        } else if (inInsideDetails) {
-            currentDetails += line + '\n';
-        }
-    }
-
-    return customImages;
-}
-
-async function uploadImage(github, imageName, line) {
-    const match = line.match(/!\[.*?\]\((.*?)\)/);
-    if (!match || !match[1]) {
-        console.error(`No image URL found in line: ${line}`);
-        return null;
-    }
-    const imageUrl = match[1];
-    try {
-        const response = await fetch(imageUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const blob = await response.blob();
-        const base64data = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(blob);
-        });
-        
-        const imagePath = `static/images/${imageName}`;
-        const result = await github.createFile(imagePath, base64data, true);
-        console.log(`Uploaded custom image: ${imagePath}`, result);
-        return { path: imagePath, content: base64data };
-    } catch (error) {
-        console.error(`Error uploading custom image ${imageName}:`, error);
-        return null;
-    }
+    return detailsArray;
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
@@ -614,19 +589,38 @@ document.addEventListener('DOMContentLoaded', (event) => {
             syncButton.textContent = 'Preparing content...';
             const chapterStructure = Array.from(document.querySelectorAll('#parseTable tbody tr'));
             const uploadedImages = [];
-            const customImages = await handleCustomConfiguration(customConfig.content, github, uploadedImages);
             const restructuredChapterStructure = restructureChapterStructure(chapterStructure);
             const folderStructure = generateFolderStructure(restructuredChapterStructure);
-            console.log('Folder structure:', folderStructure);
+            console.log('folderStructure:', folderStructure);
+            const customConfigurations = parseCustomConfiguration(customConfig.content.join('\n'));
+            const fullFolderStructure = [
+                ...customConfigurations.map(config => {
+                  if (config.includes('<summary>thumbnail.png</summary>')) {
+                    return {
+                      id: '-1',
+                      content: config,
+                      path: 'static/images/favicon.png'
+                    }
+                  } else if (config.includes('<summary>favicon.png</summary>')) {
+                    return {
+                      id: '-2',
+                      content: config,
+                      path: 'static/images/favicon.png'
+                    }
+                  }
+                }),
+                ...folderStructure
+            ];
+
+            console.log('FullFolderStructure structure:', fullFolderStructure);
 
             const filesToCreate = [];
-
-            for (const item of folderStructure) {
+            for (const item of fullFolderStructure) {
                 try {
                     updateSyncStatus(item.id, `Preparing`);
                     const basePath = item.path.split('/').slice(0, -1).join('/');
+                    console.log('item:', item);
                     const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
-                    
                     filesToCreate.push({ path: item.path, content: newContent });
                     console.log(`Prepared: ${item.path}`);
                     
