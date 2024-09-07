@@ -310,7 +310,10 @@ weight = ${folderIndex - 1}
 ${item.content}
 `
       });
-      item.children.forEach(child => processItem(child, path));
+      item.children.forEach(child => {
+        currentFolder = path.replace(/^content\//, '')
+        processItem(child, path)
+      });
     } else if (item.children && item.children.length > 0) {
       // Create a folder with _index.md for other levels with children
       const weight = subIndex[currentFolder];
@@ -329,7 +332,7 @@ ${item.content}
 `
       });
       item.children.forEach(child => processItem(child, path));
-    } else {
+    } else if (item.children && item.children.length === 0) {
       // Create a regular file for items without children
       const weight = subIndex[currentFolder];
       subIndex[currentFolder]++;
@@ -347,7 +350,11 @@ ${item.content}
     }
   }
 
-  chapterStructure.forEach(item => processItem(item));
+  console.log('Chapter structure:', chapterStructure);
+  chapterStructure.forEach(item => {
+    console.log(item)
+    processItem(item)
+  });
 
   return structure;
 }
