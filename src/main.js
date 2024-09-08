@@ -401,9 +401,9 @@ async function processAndUploadImages(id, content, basePath) {
         const randomDigits = Math.floor(100000 + Math.random() * 900000);
         let newImagePath;
         if (id === '-1') {
-          newImagePath = `static/images/favicon.png`
-        } else if (id === '-2') {
           newImagePath = `static/images/thumbnail.png`
+        } else if (id === '-2') {
+          newImagePath = `static/images/favicon.png`
         } else {
           newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
         }
@@ -477,21 +477,16 @@ async function processAndUploadImages(id, content, basePath) {
 }
 
 function parseCustomConfiguration(content) {
-    // Remove the outer <details> tag with "Custom Configuration" summary
-    const innerContent = content.replace(/<details>\s*<summary>Custom Configuration<\/summary>([\s\S]*?)<\/details>/g, '$1');
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(content, 'text/html');
+  // Select the outer <details> element (the first one)
+  const outerDetails = doc.querySelector('details');
+  // Query all nested <details> inside the outer <details>
+  const detailsElements = outerDetails.querySelectorAll('details');
 
-    // Match individual <details> blocks
-    const detailsRegex = /<details>[\s\S]*?<\/details>/g;
-    const matches = innerContent.match(detailsRegex) || [];
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(matches[0], 'text/html');
-    const detailsElements = doc.querySelectorAll('details');
-    
-    // Convert NodeList to array and map to extract outer HTML of each <details> block
-    const detailsArray = Array.from(detailsElements).map(detail => detail.outerHTML);
-    console.log('Parsed custom configuration:', detailsArray);
-
-    return detailsArray;
+  // Convert NodeList to array and map to extract outer HTML of each <details> block
+  const detailsArray = Array.from(detailsElements).map(detail => detail.outerHTML);
+  return detailsArray;
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
@@ -599,7 +594,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     return {
                       id: '-1',
                       content: config,
-                      path: 'static/images/favicon.png'
+                      path: 'static/images/thumbnail.png'
                     }
                   } else if (config.includes('<summary>favicon.png</summary>')) {
                     return {
@@ -611,7 +606,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 }),
                 ...folderStructure
             ];
-
             console.log('FullFolderStructure structure:', fullFolderStructure);
 
             const filesToCreate = [];
@@ -619,11 +613,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 try {
                     updateSyncStatus(item.id, `Preparing`);
                     const basePath = item.path.split('/').slice(0, -1).join('/');
-                    console.log('item:', item);
                     const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
-                    filesToCreate.push({ path: item.path, content: newContent });
+                    if (item.id != '-1' && item.id != '-2') {
+                      filesToCreate.push({ path: item.path, content: newContent });
+                    }
                     console.log(`Prepared: ${item.path}`);
-                    
                     uploadedImages.push(...itemUploadedImages);
                     updateSyncStatus(item.id, `✅ Prepared`);
                 } catch (error) {
