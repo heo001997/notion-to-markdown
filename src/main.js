@@ -393,7 +393,7 @@ async function processAndUploadImages(id, content, basePath) {
   
     while ((match = imgRegex.exec(content)) !== null) {
         let oldImageUrl = match[1];
-        if (id === '-1' || id === '-2') {
+        if (id === '-1' || id === '-2' || id === '-3') {
           oldImageUrl = oldImageUrl.replace(/&amp;/g, '&');
         }
         const imageName = oldImageUrl.split('/').pop().split('?')[0];
@@ -404,6 +404,8 @@ async function processAndUploadImages(id, content, basePath) {
           newImagePath = `static/images/thumbnail.png`
         } else if (id === '-2') {
           newImagePath = `static/images/favicon.png`
+        } else if (id === '-3') {
+          newImagePath = `static/images/mini-map.png`
         } else {
           newImagePath = `static/images/${imageBasePath}/${id}-${randomDigits}-${imageName}`;
         }
@@ -602,6 +604,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
                       content: config,
                       path: 'static/images/favicon.png'
                     }
+                  } else if (config.includes('<summary>mini-map.png</summary>')) {
+                    return {
+                      id: '-3',
+                      content: config,
+                      path: 'static/images/mini-map.png'
+                    }
                   }
                 }),
                 ...folderStructure
@@ -614,7 +622,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     updateSyncStatus(item.id, `Preparing`);
                     const basePath = item.path.split('/').slice(0, -1).join('/');
                     const { newContent, uploadedImages: itemUploadedImages } = await processAndUploadImages(item.id, item.content, basePath);
-                    if (item.id != '-1' && item.id != '-2') {
+                    if (item.id != '-1' && item.id != '-2' && item.id != '-3') {
                       filesToCreate.push({ path: item.path, content: newContent });
                     }
                     console.log(`Prepared: ${item.path}`);
